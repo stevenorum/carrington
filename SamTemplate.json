@@ -101,13 +101,12 @@
                     }
                 },
                 "Events": {
-                    "ScraperCron":{
+                    "DataPullerCron":{
                         "Type":"Schedule",
                         "Properties": {
                             "Description":"Scrapes stuff.",
                             "Enabled":true,
                             "Input":"{\"source\":\"cron\"}",
-                            "Name":"ScraperCron",
                             "Schedule":"rate(5 minutes)"
                         }
                     },
