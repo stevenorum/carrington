@@ -3,11 +3,37 @@
     "Transform": "AWS::Serverless-2016-10-31",
     "Description": "",
     "Resources": {
-        "DataTable":{
+        "SnsTopic": {
+            "Type" : "AWS::SNS::Topic",
+            "Properties" : {
+                "DisplayName" : "Carrington"
+            }
+        },
+        "EventTable":{
             "Type":"AWS::DynamoDB::Table",
             "Properties":{
-                "AttributeDefinitions": [{"AttributeName": "source","AttributeType": "S"},{"AttributeName": "timestamp","AttributeType": "N"}],
-                "KeySchema": [{"AttributeName": "source","KeyType": "HASH"},{"AttributeName": "timestamp","KeyType": "RANGE"}],
+                "AttributeDefinitions": [
+                    {"AttributeName": "space_weather_message_code","AttributeType": "S"},
+                    {"AttributeName": "serial_number","AttributeType": "N"},
+                    {"AttributeName": "source","AttributeType": "S"},
+                    {"AttributeName": "timestamp","AttributeType": "N"}
+                ],
+                "KeySchema": [
+                    {"AttributeName": "space_weather_message_code","KeyType": "HASH"},
+                    {"AttributeName": "serial_number","KeyType": "RANGE"}
+                ],
+                "GlobalSecondaryIndexes": [
+                    {
+                        "IndexName": "source-timestamp-index",
+                        "KeySchema": [
+                            { "AttributeName": "source", "KeyType": "HASH" },
+                            { "AttributeName": "timestamp", "KeyType": "RANGE" }
+                        ],
+                        "Projection": {
+                            "ProjectionType": "ALL"
+                        }
+                    }
+                ],
                 "BillingMode": "PAY_PER_REQUEST"
             }
         },
@@ -21,7 +47,8 @@
                         {
                             "Action": [
                                 "cloudwatch:*",
-                                "logs:*"
+                                "logs:*",
+                                "sns:*"
                             ],
                             "Resource": "*",
                             "Effect": "Allow"
@@ -40,8 +67,8 @@
                                 "dynamodb:List*"
                             ],
                             "Resource": [
-                                { "Fn::Sub" : "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DataTable}"},
-                                { "Fn::Sub" : "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DataTable}/*"}
+                                { "Fn::Sub" : "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EventTable}"},
+                                { "Fn::Sub" : "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EventTable}/*"}
                             ],
                             "Effect": "Allow"
                         },
@@ -97,7 +124,8 @@
                 "Environment":{
                     "Variables":{
                         "STACK_NAME":{"Ref":"AWS::StackName"},
-                        "DATA_TABLE":{"Ref":"DataTable"}
+                        "EVENT_TABLE":{"Ref":"EventTable"},
+                        "TOPIC_ARN":{"Ref":"SnsTopic"}
                     }
                 },
                 "Events": {

@@ -144,6 +144,7 @@
                                 "cloudwatch:*",
                                 "s3:*",
                                 "sns:*",
+                                "sqs:*",
                                 "ecs:*",
                                 "ec2:*",
                                 "events:*",
@@ -268,7 +269,9 @@
                                 "iam:*",
                                 "codepipeline:*",
                                 "codebuild:*",
-                                "codedeploy:*"
+                                "codedeploy:*",
+                                "sns:*",
+                                "sqs:*"
                             ],
                             "Resource": "*",
                             "Effect": "Allow"

@@ -7,7 +7,7 @@ from sneks.ddb import make_json_safe
 import sneks.snekjson as json
 from sneks.ddb.orm import CFObject
 
-_DataObject = CFObject.lazysubclass(stack_name=os.environ["STACK_NAME"], logical_name="DataTable")
+_EventObject = CFObject.lazysubclass(stack_name=os.environ["STACK_NAME"], logical_name="EventTable")
 
 def clean_key(k):
     k = k.lower()
@@ -100,7 +100,7 @@ def parse_event(msg):
         poleward_impact = "Potential Impacts: Area of impact primarily poleward of "
         if line.startswith(poleward_impact):
             # record this separately but still also parse this line with the later parser
-            data["latitude"] = line[len(poleward_impact):].strip().split(" ")[0]
+            data["latitude"] = int(line[len(poleward_impact):].strip().split(" ")[0])
         for prefix in EASY_TO_PARSE:
             if line.startswith(prefix):
                 data[clean_key(prefix)] = line[len(prefix):].strip()
@@ -108,15 +108,20 @@ def parse_event(msg):
         if not handled:
             print(f"UNHANDLED LINE: {line}")
             unhandled_lines.append(line)
+    for x in ["valid_from", "valid_to", "issue_time", "now_valid_until","threshold_reached"]:
+        if x in data:
+            ts = data[x]
+            dt = datetime.strptime(ts, "%Y %b %d %H%M %Z")
+            data[x] = dt.strftime("%Y/%m/%dT%H:%MZ")
     if unhandled_lines:
         data["unhandled_lines"] = unhandled_lines
     return data
 
 def parse_event_timestamp(tss):
     # "issue_datetime": "2023-04-24 17:55:48.160"
-    return datetime.strptime(tss, "%Y-%m-%d %H:%M:%S.%f000").timestamp()
+    return datetime.strptime(tss, "%Y-%m-%d %H:%M:%S.%f").timestamp()
 
-class DataObject(_DataObject):
+class EventObject(_EventObject):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -126,10 +131,21 @@ class DataObject(_DataObject):
         timestamp = parse_event_timestamp(contents["issue_datetime"])
         source = SOURCE_EVENTS
         message = contents.get("message","?")
-        datum = cls.__init__(source=source, timestamp=timestamp, product_id=product_id, message=message, data=parse_event(message))
+        data = parse_event(message)
+        space_weather_message_code = data["space_weather_message_code"]
+        serial_number = int(data["serial_number"])
+        event = cls(
+            space_weather_message_code=space_weather_message_code,
+            serial_number=serial_number,
+            source=source,
+            timestamp=timestamp,
+            product_id=product_id,
+            message=message,
+            data=data
+        )
         if save:
-            datum.save()
-        return datum
+            event.save()
+        return event
 
     @property
     def pretty_timestamp(self):
@@ -137,36 +153,58 @@ class DataObject(_DataObject):
         dt_string = dt.strftime("%Y/%m/%d %H:%M:%S")
         return dt_string
 
-    @classmethod
-    def latest_event(cls):
-        return cls.latest_entry(source=SOURCE_EVENTS)
+    # @classmethod
+    # def latest_event(cls):
+    #     return cls.latest_entry(source=SOURCE_EVENTS)
 
     @classmethod
-    def latest_entry(cls, source):
-        response = cls.query(source=source, ScanIndexForward=False, MaxResults=1)
-        if response.get("Items"):
-            return response["Items"][0]
-        return None
+    def latest_n_events(cls, n):
+        response = cls.query(IndexName="source-timestamp-index", source=SOURCE_EVENTS, ScanIndexForward=False, MaxResults=n)
+        return response.get("Items",[])
 
-    @classmethod
-    def load_range(cls, source, start=None, end=None, count=0, oldest=False):
-        kwargs = {"ScanIndexForward":oldest}
-        if count > 0:
-            kwargs["Limit"] = count
-        hash_key_condition = DDBKey("source").eq(source)
-        if start or end:
-            start = start if start else 0
-            end = end if end else time.time()
-            range_key_condition = DDBKey("timestamp").between(decimal.Decimal(start), decimal.Decimal(end))
-            kwargs["KeyConditionExpression"] = hash_key_condition & range_key_condition
-        else:
-            kwargs["KeyConditionExpression"] = hash_key_condition
-        return cls.query_all(**kwargs)
+    def notification(self):
+        data = self["data"]
+        if "aurora" not in data or "latitude" not in data:
+            return None
+        message = f"{data['space_weather_message_code']}/{data['serial_number']} {data['aurora']}\nGMLat:{data['latitude']}\n"
+        if "valid_from" in data:
+            message += f"from:{data['valid_from']} "
+        if "valid_to" in data:
+            message += f"to:{data['valid_to']}"
+        if len(message) > 160:
+            message = message.replace("latitude","lat")
+        if len(message) > 160:
+            message = message.replace("GMLat","GML")
+        if len(message) > 160:
+            message = message.replace("northern","N")
+        return message
 
-    @classmethod
-    def load_n_events(cls, source, n, oldest=False):
-        return cls.load_range(source=source, count=n, oldest=oldest)
+    # @classmethod
+    # def latest_entry(cls, source):
+    #     response = cls.query(IndexName="source-timestamp-index", source=source, ScanIndexForward=False, MaxResults=1)
+    #     if response.get("Items"):
+    #         return response["Items"][0]
+    #     return None
 
-    @classmethod
-    def all_since(cls, source, timestamp):
-        return cls.load_range(source, start=timestamp, oldest=False)
+    # @classmethod
+    # def load_range(cls, source, start=None, end=None, count=0, oldest=False):
+    #     kwargs = {"ScanIndexForward":oldest}
+    #     if count > 0:
+    #         kwargs["Limit"] = count
+    #     hash_key_condition = DDBKey("source").eq(source)
+    #     if start or end:
+    #         start = start if start else 0
+    #         end = end if end else time.time()
+    #         range_key_condition = DDBKey("timestamp").between(decimal.Decimal(start), decimal.Decimal(end))
+    #         kwargs["KeyConditionExpression"] = hash_key_condition & range_key_condition
+    #     else:
+    #         kwargs["KeyConditionExpression"] = hash_key_condition
+    #     return cls.query_all(IndexName="source-timestamp-index", **kwargs)
+
+    # @classmethod
+    # def load_n_events(cls, source, n, oldest=False):
+    #     return cls.load_range(source=source, count=n, oldest=oldest)
+
+    # @classmethod
+    # def all_since(cls, source, timestamp):
+    #     return cls.load_range(source, start=timestamp, oldest=False)

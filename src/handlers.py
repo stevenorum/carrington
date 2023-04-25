@@ -42,15 +42,47 @@ def string_to_datetime(s):
 def sanitize(s):
     return s.replace('"',"")
 
+SNS = boto3.client("sns")
+TOPIC_ARN = os.environ["TOPIC_ARN"]
+
+def publish(message):
+    response = SNS.publish(
+        TopicArn=TOPIC_ARN,
+        # PhoneNumber='string',
+        Message=message,
+        # Subject='string',
+        # MessageStructure='string',
+    )
+
+def notify(obj, should_publish=False):
+    message = obj.notification()
+    if not message:
+        return
+    l = len(message)
+    print(f"Generated message (l={l}):")
+    print(message)
+    if should_publish:
+        print("Publishing...")
+        publish(message)
+        print("Published.")
+
 def scrape_stuff(event, *args, **kwargs):
     events = requests.get("https://services.swpc.noaa.gov/products/alerts.json").json()
     print(json.dumps(events, sort_keys=True))
-    latest_event = DataObject.latest_event()
-    min_timestamp = 0 if None == latest_event else latest_event.get("timestamp")
     for event in events:
-        obj = DataObject.parse_event(event)
-        if obj["timestamp"] > min_timestamp:
+        try:
+            obj = EventObject.parse_event(event)
+            print(f"Event found: {obj['space_weather_message_code']}/{obj['serial_number']} ({obj.pretty_timestamp})")
             obj.save()
+            notify(obj, should_publish=obj.get("data",{}).get("latitude",90) < 50)
+        except:
+            message = traceback.format_exc()
+            if "ConditionalCheckFailedException" in message:
+                print("Reached the events that have already been saved.")
+                break
+            else:
+                print("Unexpected error!")
+                print(message)
 
 # @register_path("HTML", r"^/?events/list/?$")
 # @returns_html("events/list.html")
