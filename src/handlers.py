@@ -84,23 +84,29 @@ def scrape_stuff(event, *args, **kwargs):
                 print("Unexpected error!")
                 print(message)
 
-# @register_path("HTML", r"^/?events/list/?$")
-# @returns_html("events/list.html")
-# def events_list_page(event, *args, next_token=None, **kwargs):
-#     response = EntityObject.scan(NextToken=next_token)
-#     entities = response["Items"]
-#     token = response["NextToken"]
-#     return {"entities":entities, "next_token":token}
+@register_path("HTML", r"^/?events/list/?$")
+@returns_html("events/list.html")
+def events_list_page(event, *args, next_token=None, **kwargs):
+    response = EventObject.query_chronological(NextToken=next_token)
+    events = response["Items"]
+    token = response["NextToken"]
+    return {"events":events, "next_token":token}
 
-# @register_path("HTML", r"^/?entity/view/?$")
-# @returns_html("entity/view.html")
-# @log_function
-# def entity_view_page(event, *args, entity=None, next_token=None, **kwargs):
-#     entity_obj = EntityObject.from_id(entity)
-#     response = PostObject.query(IndexName="entity-timestamp-index", entity=entity, NextToken=next_token, ScanIndexForward=False)
-#     posts = response["Items"]
-#     token = response["NextToken"]
-#     return {"entity":entity_obj, "posts":posts, "next_token":next_token}
+@register_path("HTML", r"^/?events/(?P<space_weather_message_code>[A-Z0-9]{5,12})/?$")
+@returns_html("events/list_code.html")
+def events_list_code_page(event, space_weather_message_code, *args, next_token=None, **kwargs):
+    response = EventObject.query(space_weather_message_code=space_weather_message_code, NextToken=next_token, ScanIndexForward=False)
+    events = response["Items"]
+    token = response["NextToken"]
+    return {"events":events, "next_token":token, "space_weather_message_code":space_weather_message_code}
+
+@register_path("HTML", r"^/?events/(?P<space_weather_message_code>[A-Z0-9]{5,12})/(?P<serial_number>[0-9]+)/?$")
+@returns_html("events/view.html")
+def event_view_page(event, space_weather_message_code, serial_number, *args, **kwargs):
+    serial_number = int(serial_number)
+    event = EventObject.load(space_weather_message_code=space_weather_message_code, serial_number=serial_number)
+    # can't have "event" as a key in the params handed back because it conflicts with the APIGateway event.
+    return {"_event":event, "space_weather_message_code":space_weather_message_code, "serial_number":serial_number}
 
 def get_cookies(event):
     cookie_dict = {}

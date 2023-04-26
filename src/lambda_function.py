@@ -7,7 +7,7 @@ try:
     from sneks.sam import ui_stuff
 
     STATIC_MATCHERS = [
-        PathMatcher(r"^.*/favicon.ico$", ui_stuff.get_static, {"filename":"static/favicon.ico"}),
+        PathMatcher(r"^.*/favicon.ico$", ui_stuff.get_static, {"filename":"static/favicon_io_c/favicon.ico"}),
         PathMatcher(r"^/?(?P<filename>static/.*)$", ui_stuff.get_static),
     ]
 

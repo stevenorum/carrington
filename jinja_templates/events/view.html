@@ -1,0 +1,11 @@
+{% set this_page = "events/view.html" if this_page is not defined else this_page %}
+{% extends "base.html.jinja" %}
+
+{% block body %}
+<div class="py-5 text-center">
+  <h2>Event {{space_weather_message_code}}:{{serial_number}} @ {{_event.pretty_timestamp}} UTC</h2>
+  <pre>
+    {{_event['message']}}
+  </pre>
+</div>
+{% endblock %}

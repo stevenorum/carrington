@@ -124,6 +124,7 @@ def parse_event_timestamp(tss):
 class EventObject(_EventObject):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self['serial_number'] = int(self['serial_number'])
 
     @classmethod
     def parse_event(cls, contents, save=False):
@@ -153,6 +154,15 @@ class EventObject(_EventObject):
         dt_string = dt.strftime("%Y/%m/%d %H:%M:%S")
         return dt_string
 
+    @property
+    def summary(self):
+        data = self["data"]
+        for k in ["alert","watch","warning","summary","extended_warning","cancel_warning","continued_alert"]:
+            if k in data:
+                pk = k.upper().replace("_"," ")
+                return f"{pk}: {data[k]}"
+        return "-"
+
     # @classmethod
     # def latest_event(cls):
     #     return cls.latest_entry(source=SOURCE_EVENTS)
@@ -161,6 +171,10 @@ class EventObject(_EventObject):
     def latest_n_events(cls, n):
         response = cls.query(IndexName="source-timestamp-index", source=SOURCE_EVENTS, ScanIndexForward=False, MaxResults=n)
         return response.get("Items",[])
+
+    @classmethod
+    def query_chronological(cls, **kwargs):
+        return cls.query(IndexName="source-timestamp-index", source=SOURCE_EVENTS, ScanIndexForward=False, **kwargs)
 
     def notification(self):
         data = self["data"]

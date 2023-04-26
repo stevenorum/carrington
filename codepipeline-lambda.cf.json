@@ -35,6 +35,26 @@
         "StaticAssetBucket": {
             "Type": "AWS::S3::Bucket",
             "Properties": {
+                "PublicAccessBlockConfiguration":{
+                    "BlockPublicAcls" : false,
+                    "BlockPublicPolicy" : false,
+                    "IgnorePublicAcls" : false,
+                    "RestrictPublicBuckets" : false
+                }
+            }
+        },
+        "StaticAssetBucketPolicy" : {
+            "Type" : "AWS::S3::BucketPolicy",
+            "Properties" : {
+                "Bucket" : {"Ref" : "StaticAssetBucket"},
+                "PolicyDocument": {
+                    "Statement":[{
+                        "Action":["s3:GetObject"],
+                        "Effect":"Allow",
+                        "Resource": { "Fn::Sub" : "arn:${AWS::Partition}:s3:::${StaticAssetBucket}/*"},
+                        "Principal":"*"
+                    }]
+                }
             }
         },
         "BuildPolicy": {

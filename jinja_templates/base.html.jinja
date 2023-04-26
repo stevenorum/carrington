@@ -15,10 +15,10 @@
     <meta name="description" content="">
     <meta name="author" content="">
 
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ static_base }}/static/favicon_io_c/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ static_base }}/static/favicon_io_c/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ static_base }}/static/favicon_io_c/favicon-16x16.png">
-    <link rel="manifest" href="{{ static_base }}/static/favicon_io_c/site.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ static_base }}/static/favicon_io_{{ _site_name[0] }}/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ static_base }}/static/favicon_io_{{ _site_name[0] }}/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ static_base }}/static/favicon_io_{{ _site_name[0] }}/favicon-16x16.png">
+    <link rel="manifest" href="{{ static_base }}/static/favicon_io_{{ _site_name[0] }}/site.webmanifest">
     
     <title>{% if title is defined %}{{title}}{% else %}{{_default_title}}{% endif %}</title>
 
@@ -46,7 +46,7 @@
       <!-- Fixed navbar -->
       <nav class="navbar navbar-expand-md navbar-light fixed-top" style="background-color: #a5a5a5;">
         <!-- TODO: need to update this with a 'C' logo instead of an 'A' logo. -->
-        <a class="navbar-brand" href="{{ base_path }}/"><img class="d-inline-block align-top" src="{{ static_base }}/static/a.png" alt="" height="30"></a>
+        <a class="navbar-brand" href="{{ base_path }}/"><img class="d-inline-block align-top" src="{{ static_base }}/static/favicon_io_{{ _site_name[0] }}/android-chrome-512x512.png" alt="" height="30"></a>
         <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation">
           <span class="navbar-toggler-icon"></span>
         </button>
@@ -56,8 +56,8 @@
             <li class="nav-item{{' active' if this_page == 'index.html' else ''}}">
               <a class="nav-link" href="{{ base_path }}/">[Home]</a>
             </li>
-            <li class="nav-item{{' active' if this_page == 'event/list.html' else ''}}">
-              <a class="nav-link" href="{{ base_path }}/event/list">[List events]</a>
+            <li class="nav-item{{' active' if this_page == 'events/list.html' else ''}}">
+              <a class="nav-link" href="{{ base_path }}/events/list">[List events]</a>
             </li>
           </ul>
         </div>
@@ -82,7 +82,7 @@
 
     <footer class="footer">
       <div class="container">
-        <span class="text-muted">A creation of Drunken Robot Labs.</span>
+        <span class="text-muted">A creation of Didelphis Research.</span>
       </div>
     </footer>
 
