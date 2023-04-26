@@ -74,7 +74,7 @@ def scrape_stuff(event, *args, **kwargs):
             obj = EventObject.parse_event(event)
             print(f"Event found: {obj['space_weather_message_code']}/{obj['serial_number']} ({obj.pretty_timestamp})")
             obj.save()
-            notify(obj, should_publish=obj.get("data",{}).get("latitude",90) < 50)
+            notify(obj, should_publish=obj.get("data",{}).get("latitude",90) < 56)
         except:
             message = traceback.format_exc()
             if "ConditionalCheckFailedException" in message:
