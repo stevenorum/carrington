@@ -57,7 +57,7 @@ lines = clean_lines(t)
 last_line_handled = -1
 info[STORM_KEY] = {d:{} for d in days_s}
 info[KP_KEY] = {d:{} for d in days_s}
-info[AP_KEY] = {d:{} for d in [yesterday_s,today_s]+days_s}
+info[AP_KEY] = {}
 for i in range(len(lines)):
     if i <= last_line_handled:
         continue
