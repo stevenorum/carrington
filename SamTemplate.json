@@ -9,6 +9,24 @@
                 "DisplayName" : "Carrington"
             }
         },
+        "PageSnsTopic": {
+            "Type" : "AWS::SNS::Topic",
+            "Properties" : {
+                "DisplayName" : "Carrington"
+            }
+        },
+        "TextSnsTopic": {
+            "Type" : "AWS::SNS::Topic",
+            "Properties" : {
+                "DisplayName" : "Carrington"
+            }
+        },
+        "EmailSnsTopic": {
+            "Type" : "AWS::SNS::Topic",
+            "Properties" : {
+                "DisplayName" : "Carrington"
+            }
+        },
         "EventTable":{
             "Type":"AWS::DynamoDB::Table",
             "Properties":{
@@ -33,6 +51,20 @@
                             "ProjectionType": "ALL"
                         }
                     }
+                ],
+                "BillingMode": "PAY_PER_REQUEST"
+            }
+        },
+        "ForecastTable":{
+            "Type":"AWS::DynamoDB::Table",
+            "Properties":{
+                "AttributeDefinitions": [
+                    {"AttributeName": "product","AttributeType": "S"},
+                    {"AttributeName": "timestamp","AttributeType": "N"}
+                ],
+                "KeySchema": [
+                    {"AttributeName": "product","KeyType": "HASH"},
+                    {"AttributeName": "timestamp","KeyType": "RANGE"}
                 ],
                 "BillingMode": "PAY_PER_REQUEST"
             }
@@ -68,7 +100,9 @@
                             ],
                             "Resource": [
                                 { "Fn::Sub" : "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EventTable}"},
-                                { "Fn::Sub" : "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EventTable}/*"}
+                                { "Fn::Sub" : "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EventTable}/*"},
+                                { "Fn::Sub" : "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ForecastTable}"},
+                                { "Fn::Sub" : "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ForecastTable}/*"}
                             ],
                             "Effect": "Allow"
                         },
@@ -125,7 +159,11 @@
                     "Variables":{
                         "STACK_NAME":{"Ref":"AWS::StackName"},
                         "EVENT_TABLE":{"Ref":"EventTable"},
-                        "TOPIC_ARN":{"Ref":"SnsTopic"}
+                        "FORECAST_TABLE":{"Ref":"ForecastTable"},
+                        "TOPIC_ARN":{"Ref":"SnsTopic"},
+                        "PAGE_TOPIC_ARN":{"Ref":"PageSnsTopic"},
+                        "TEXT_TOPIC_ARN":{"Ref":"TextSnsTopic"},
+                        "EMAIL_TOPIC_ARN":{"Ref":"EmailSnsTopic"}
                     }
                 },
                 "Events": {

@@ -18,13 +18,18 @@ import time
 
 from sneks.sam import events
 from sneks.sam.response_core import make_response, redirect, ApiException
-from sneks.sam.decorators import register_path, returns_json, returns_html
+from sneks.sam.decorators import register_path, returns_json, returns_html, returns_text
 from sneks.sam.exceptions import *
 from sneks.ddb import deepload
 
+from grabber import Grabber
 from orm import *
 
 from utils import log_function
+
+SHORT_FORECAST_URL = "https://services.swpc.noaa.gov/text/3-day-geomag-forecast.txt"
+MONTH_FORECAST_URL = "https://services.swpc.noaa.gov/text/27-day-outlook.txt"
+ALERTS_URL = "https://services.swpc.noaa.gov/products/alerts.json"
 
 DT_FORMATS = [
     "%Y/%m/%dT%H:%M:%S",
@@ -44,6 +49,9 @@ def sanitize(s):
 
 SNS = boto3.client("sns")
 TOPIC_ARN = os.environ["TOPIC_ARN"]
+PAGE_TOPIC_ARN = os.environ["PAGE_TOPIC_ARN"]
+TEXT_TOPIC_ARN = os.environ["TEXT_TOPIC_ARN"]
+EMAIL_TOPIC_ARN = os.environ["EMAIL_TOPIC_ARN"]
 
 def publish(message):
     response = SNS.publish(
@@ -54,21 +62,59 @@ def publish(message):
         # MessageStructure='string',
     )
 
-def notify(obj, should_publish=False):
-    message = obj.notification()
-    if not message:
-        return
-    l = len(message)
-    print(f"Generated message (l={l}):")
-    print(message)
-    if should_publish:
-        print("Publishing...")
-        publish(message)
-        print("Published.")
+def send_text(message):
+    response = SNS.publish(
+        TopicArn=TEXT_TOPIC_ARN,
+        # PhoneNumber='string',
+        Message=message,
+        # Subject='string',
+        # MessageStructure='string',
+    )
 
-def scrape_stuff(event, *args, **kwargs):
-    events = requests.get("https://services.swpc.noaa.gov/products/alerts.json").json()
-    print(json.dumps(events, sort_keys=True))
+def send_page(message):
+    response = SNS.publish(
+        TopicArn=PAGE_TOPIC_ARN,
+        # PhoneNumber='string',
+        Message=message,
+        # Subject='string',
+        # MessageStructure='string',
+    )
+
+def send_email(message, subject):
+    response = SNS.publish(
+        TopicArn=EMAIL_TOPIC_ARN,
+        # PhoneNumber='string',
+        Message=message,
+        Subject=subject,
+        # MessageStructure='string',
+    )
+
+def notify(obj, should_publish=False):
+    message = obj.text_notification()
+    if message:
+        l = len(message)
+        print(f"Generated SMS message (l={l}):")
+        print(message)
+        if should_publish:
+            print("Publishing SMS...")
+            publish(message)
+            send_text(message)
+            print("Published SMS.")
+    else:
+        print("No SMS generated for event.")
+    subject, body = obj.email_notification()
+    if subject and body:
+        print(f"Generated email message:\nSUBJECT: {subject}\nBODY:\n{body}")
+        if should_publish:
+            print("Publishing email...")
+            send_email(message=body, subject=subject)
+            print("Published email.")
+    else:
+        print("No email generated for event.")
+
+def scrape_events():
+    events = requests.get(ALERTS_URL).json()
+    # print(json.dumps(events, sort_keys=True))
     for event in events:
         try:
             obj = EventObject.parse_event(event)
@@ -83,6 +129,42 @@ def scrape_stuff(event, *args, **kwargs):
             else:
                 print("Unexpected error!")
                 print(message)
+
+def scrape_short_forecast():
+    forecast = requests.get(SHORT_FORECAST_URL).text.replace("\r","")
+    ForecastObject.from_short_forecast(forecast, save=True)
+
+def scrape_month_forecast():
+    forecast = requests.get(MONTH_FORECAST_URL).text.replace("\r","")
+    ForecastObject.from_month_forecast(forecast, save=True)
+
+def scrape_stuff(event, *args, **kwargs):
+    try:
+        print("Scraping events...")
+        scrape_events()
+    except:
+        traceback.print_exc()
+    try:
+        print("Scraping short-term forecast...")
+        scrape_short_forecast()
+    except:
+        traceback.print_exc()
+    try:
+        print("Scraping long-term forecast...")
+        scrape_month_forecast()
+    except:
+        traceback.print_exc()
+
+@register_path("HTML", r"^/?scrape/?$")
+@returns_text
+def scrape_now(event, *args, **kwargs):
+    grabber = Grabber()
+    with grabber:
+        scrape_stuff(event, *args, **kwargs)
+    info = grabber.info()
+    ind = ">>>>>>>>>>"
+    output = f"{ind}STDOUT:\n{info['stdout']}\n{ind}STDERR:\n{info['stderr']}\n{ind}LOGS:\n{info['logs']}\n{ind}DURATION (s):\n{info['duration']}"
+    return output
 
 @register_path("HTML", r"^/?events/list/?$")
 @returns_html("events/list.html")
@@ -102,9 +184,11 @@ def events_list_code_page(event, space_weather_message_code, *args, next_token=N
 
 @register_path("HTML", r"^/?events/(?P<space_weather_message_code>[A-Z0-9]{5,12})/(?P<serial_number>[0-9]+)/?$")
 @returns_html("events/view.html")
-def event_view_page(event, space_weather_message_code, serial_number, *args, **kwargs):
+def event_view_page(event, space_weather_message_code, serial_number, test_notification=None, *args, **kwargs):
     serial_number = int(serial_number)
     event = EventObject.load(space_weather_message_code=space_weather_message_code, serial_number=serial_number)
+    if test_notification:
+        notify(event, should_publish=True)
     # can't have "event" as a key in the params handed back because it conflicts with the APIGateway event.
     return {"_event":event, "space_weather_message_code":space_weather_message_code, "serial_number":serial_number}
 

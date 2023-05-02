@@ -34,7 +34,9 @@ try:
     def lambda_handler(event, context):
         try:
             if "cron" == event.get("source"):
+                print("Executing cron task...")
                 return handlers.scrape_stuff(event, context)
+            print("Sending to handler chain...")
             response = MATCHERS.handle_event(event)
             print(response)
             return response

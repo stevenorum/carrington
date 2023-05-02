@@ -5,15 +5,50 @@ from boto3.dynamodb.conditions import Key as DDBKey
 
 from sneks.ddb import make_json_safe
 import sneks.snekjson as json
-from sneks.ddb.orm import CFObject
+from sneks.ddb.orm import CFObject, ensure_ddbsafe
 
 _EventObject = CFObject.lazysubclass(stack_name=os.environ["STACK_NAME"], logical_name="EventTable")
+_ForecastObject = CFObject.lazysubclass(stack_name=os.environ["STACK_NAME"], logical_name="ForecastTable")
 
 def clean_key(k):
     k = k.lower()
     k = k.replace(":","").replace("-","")
     k = k.strip().replace(" ","_")
     return k
+
+def clean_line(l):
+    cl = l.replace("\r","").replace("\n","").replace("  "," ").strip()
+    if len(cl) < len(l):
+        return clean_line(cl)
+    return l
+
+def clean_lines(t):
+    lines = [clean_line(l) for l in t.split("\n")]
+    return [l for l in lines if l]
+
+def time_left_in_year(dt):
+    new_year = datetime(year=dt.year+1, month=1, day=1)
+    td = new_year-dt
+    return td.total_seconds()
+
+def get_dt(issued_dt, day_str):
+    year = issued_dt.year
+    if day_str.startswith("Jan") and issued_dt.month == 12:
+        year = year + 1
+    return datetime.strptime(f"{year} {day_str}", "%Y %b %d") # 2023 Apr 30
+
+def date_to_s(dt):
+    return dt.strftime("%Y/%m/%d")
+
+def format_date(s):
+    # Input: 2023 May 01
+    # Output: 2023/05/01
+    return datetime.strptime(s,"%Y %b %d").strftime("%Y/%m/%d")
+
+RF_KEY = "rf_forecasts"
+AP_KEY= "ap_forecasts"
+KP_KEY = "kp_forecasts"
+STORM_KEY = "storm_forecasts"
 
 SOURCE_EVENTS= "EVENTS"
 
@@ -176,11 +211,15 @@ class EventObject(_EventObject):
     def query_chronological(cls, **kwargs):
         return cls.query(IndexName="source-timestamp-index", source=SOURCE_EVENTS, ScanIndexForward=False, **kwargs)
 
-    def notification(self):
+    def url(self):
+        return f"https://apps.didelphisresearch.org/carrington/events/{self['data']['space_weather_message_code']}/{self['data']['serial_number']}"
+
+    def text_notification(self, url=False):
         data = self["data"]
         if "aurora" not in data or "latitude" not in data:
             return None
-        message = f"{data['space_weather_message_code']}/{data['serial_number']} {data['aurora']}\nGMLat:{data['latitude']}\n"
+        middle = self.url() if url else data['aurora']
+        message = f"{data['space_weather_message_code']}/{data['serial_number']}\n{middle}\nGMLat:{data['latitude']}\n"
         if "valid_from" in data:
             message += f"from:{data['valid_from']} "
         if "valid_to" in data:
@@ -192,6 +231,15 @@ class EventObject(_EventObject):
         if len(message) > 160:
             message = message.replace("northern","N")
         return message
+
+    def email_notification(self):
+        data = self["data"]
+        if "aurora" not in data or "latitude" not in data:
+            return None
+        subject = self.summary
+        # url = f"https://apps.didelphisresearch.org/carrington/events/{data['space_weather_message_code']}/{data['serial_number']}"
+        message = f"{self['message']}\n\n{self.url()}"
+        return subject, message
 
     # @classmethod
     # def latest_entry(cls, source):
@@ -222,3 +270,102 @@ class EventObject(_EventObject):
     # @classmethod
     # def all_since(cls, source, timestamp):
     #     return cls.load_range(source, start=timestamp, oldest=False)
+
+class ForecastObject(_ForecastObject):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @classmethod
+    def _shared_setup(cls, forecast):
+        issued = datetime.strptime(forecast.split(":Issued:")[1].split("\n")[0].strip(), "%Y %b %d %H%M %Z") # 2023 Apr 30 2205 UTC
+        timestamp = ensure_ddbsafe(issued.timestamp())
+        product = forecast.split(":Product:")[1].split("\n")[0].strip()
+        obj = cls.load(product=product, timestamp=timestamp)
+        if obj:
+            print(f"Forecast {product}@{issued} already added to database.")
+            return obj, True
+        info = cls(product=product, timestamp=timestamp, issued=issued)
+        info["raw"] = forecast
+        return info, False
+
+    @classmethod
+    def from_month_forecast(cls, forecast, save=False):
+        info, in_db = cls._shared_setup(forecast)
+        if in_db:
+            return info
+        lines = clean_lines(forecast)
+        last_line_handled = -1
+        info[RF_KEY] = {}
+        info[KP_KEY] = {}
+        info[AP_KEY] = {}
+        for i in range(len(lines)):
+            line = lines[i]
+            if line.startswith("#"):
+                continue
+            if line.startswith(":"):
+                continue
+            pieces = line.split(" ")
+            date = format_date(" ".join(pieces[:3]))
+            info[RF_KEY][date] = int(pieces[3])
+            info[AP_KEY][date] = int(pieces[4])
+            info[KP_KEY][date] = int(pieces[5])
+        if save:
+            info.save()
+        return info
+
+    @classmethod
+    def from_short_forecast(cls, forecast, save=False):
+        info, in_db = cls._shared_setup(forecast)
+        if in_db:
+            return info
+        lines = clean_lines(forecast)
+        last_line_handled = -1
+        days = [x.strip() for x in forecast.split("NOAA Kp index forecast")[1].split("\n")[1].strip().split("  ") if x.strip()]
+        days_dt = [get_dt(info["issued"], day) for day in days]
+        today = days_dt[0] - timedelta(days=1)
+        yesterday = today - timedelta(days=1)
+        days_s = [date_to_s(dt) for dt in days_dt]
+        today_s = date_to_s(today)
+        yesterday_s = date_to_s(yesterday)
+        info[STORM_KEY] = {d:{} for d in days_s}
+        info[KP_KEY] = {d:{} for d in days_s}
+        info[AP_KEY] = {}
+        for i in range(len(lines)):
+            if i <= last_line_handled:
+                continue
+            line = lines[i]
+            if line.startswith("#"):
+                continue
+            if line.startswith(":"):
+                continue
+            if line.startswith("NOAA Ap Index Forecast"):
+                # https://www.ngdc.noaa.gov/stp/geomag/kp_ap.html
+                info[AP_KEY][yesterday_s] = lines[i+1].split(" ")[-1]
+                info[AP_KEY][today_s] = lines[i+2].split(" ")[-1]
+                apf = lines[i+3].split(" ")[-1].split("-")
+                for d in range(3):
+                    info[AP_KEY][days_s[d]] = apf[d]
+            if line.startswith("NOAA Geomagnetic Activity Probabilities"):
+                active_pct = lines[i+1].split(" ")[-1].split("/")
+                minor_pct = lines[i+2].split(" ")[-1].split("/")
+                moderate_pct = lines[i+3].split(" ")[-1].split("/")
+                extreme_pct = lines[i+4].split(" ")[-1].split("/")
+                for d in range(3):
+                    info[STORM_KEY][days_s[d]]["minor"] = int(active_pct[d])
+                    info[STORM_KEY][days_s[d]]["moderate"] = int(minor_pct[d])
+                    info[STORM_KEY][days_s[d]]["extreme"] = int(moderate_pct[d])
+                    info[STORM_KEY][days_s[d]]["extreme"] = int(extreme_pct[d])
+                last_line_handled = i+4
+            if line.startswith("NOAA Kp index forecast"):
+                for h in range(8):
+                    kp_line = lines[i+2+h]
+                    pieces = [x.strip() for x in kp_line.split(" ") if x.strip()]
+                    window = pieces[0]
+                    by_day = pieces[1:]
+                    for d in range(3):
+                        info[KP_KEY][days_s[d]][window] = float(by_day[d])
+                last_line_handled = i+9
+
+        if save:
+            info.save()
+        return info
