@@ -48,19 +48,19 @@ def sanitize(s):
     return s.replace('"',"")
 
 SNS = boto3.client("sns")
-TOPIC_ARN = os.environ["TOPIC_ARN"]
+# TOPIC_ARN = os.environ["TOPIC_ARN"]
 PAGE_TOPIC_ARN = os.environ["PAGE_TOPIC_ARN"]
 TEXT_TOPIC_ARN = os.environ["TEXT_TOPIC_ARN"]
 EMAIL_TOPIC_ARN = os.environ["EMAIL_TOPIC_ARN"]
 
-def publish(message):
-    response = SNS.publish(
-        TopicArn=TOPIC_ARN,
-        # PhoneNumber='string',
-        Message=message,
-        # Subject='string',
-        # MessageStructure='string',
-    )
+# def publish(message):
+#     response = SNS.publish(
+#         TopicArn=TOPIC_ARN,
+#         # PhoneNumber='string',
+#         Message=message,
+#         # Subject='string',
+#         # MessageStructure='string',
+#     )
 
 def send_text(message):
     response = SNS.publish(
@@ -97,7 +97,7 @@ def notify(obj, should_publish=False):
         print(message)
         if should_publish:
             print("Publishing SMS...")
-            publish(message)
+            # publish(message)
             send_text(message)
             print("Published SMS.")
     else:
@@ -120,7 +120,7 @@ def scrape_events():
             obj = EventObject.parse_event(event)
             print(f"Event found: {obj['space_weather_message_code']}/{obj['serial_number']} ({obj.pretty_timestamp})")
             obj.save()
-            notify(obj, should_publish=obj.get("data",{}).get("latitude",90) < 56)
+            notify(obj, should_publish=obj.get("data",{}).get("latitude",90) < 51)
         except:
             message = traceback.format_exc()
             if "ConditionalCheckFailedException" in message:
